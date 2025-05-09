@@ -1,0 +1,159 @@
+//=====[Libraries]=============================================================
+
+#include "mbed.h"
+#include "arm_book_lib.h"
+
+//=====[Defines]===============================================================
+
+#define NUMBER_OF_AVG_SAMPLES                   100  // Increased sample size for smoother readings
+#define OVER_TEMP_LEVEL                         50
+#define UPDATE_INTERVAL_MS                      2000  // Slower update interval (2 seconds)
+
+//=====[Declaration and initialization of public global objects]===============
+
+UnbufferedSerial uartUsb(USBTX, USBRX, 115200);
+DigitalIn mq2(PE_12);          // Gas sensor
+AnalogIn lm35(A1);             // Temperature sensor
+AnalogIn potentiometer(A0);    // Potentiometer
+DigitalOut alarmLed(LED1);     // Alarm indicator
+
+//=====[Declaration and initialization of public global variables]=============
+
+// Sensor values
+float potentiometerReading = 0.0;
+float lm35ReadingsAverage = 0.0;
+float lm35ReadingsSum = 0.0;
+float lm35ReadingsArray[NUMBER_OF_AVG_SAMPLES];
+float lm35TempC = 0.0;
+
+// Alarm states
+bool gasDetectorState = OFF;
+bool overTempDetectorState = OFF;
+bool alarmState = OFF;
+
+//=====[Declarations (prototypes) of public functions]=========================
+
+void updateAllSensors();
+void displayAllReadings();
+float analogReadingScaledWithTheLM35Formula(float analogReading);
+
+//=====[Main function, the program entry point after power on or reset]========
+
+int main()
+{
+    char str[100];
+    int stringLength;
+    
+    // Initialize temperature array
+    for (int i = 0; i < NUMBER_OF_AVG_SAMPLES; i++) {
+        lm35ReadingsArray[i] = 0.0;
+    }
+    
+    // Setup initial message
+    sprintf(str, "Slow-paced Sensor Monitor\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    sprintf(str, "Readings update every %d milliseconds\r\n\r\n", UPDATE_INTERVAL_MS);
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    while (true) {
+        // Update sensor readings
+        updateAllSensors();
+        
+        // Display all readings
+        displayAllReadings();
+        
+        // Wait before next update
+        wait_us(UPDATE_INTERVAL_MS * 1000);
+    }
+}
+
+//=====[Implementations of public functions]===================================
+
+void updateAllSensors()
+{
+    static int lm35SampleIndex = 0;
+    
+    // Update temperature readings
+    for (int i = 0; i < NUMBER_OF_AVG_SAMPLES; i++) {
+        lm35ReadingsArray[lm35SampleIndex] = lm35.read();
+        lm35SampleIndex = (lm35SampleIndex + 1) % NUMBER_OF_AVG_SAMPLES;
+        wait_us(10000);  // Small delay between samples (10ms)
+    }
+    
+    // Calculate temperature moving average
+    lm35ReadingsSum = 0.0;
+    for (int i = 0; i < NUMBER_OF_AVG_SAMPLES; i++) {
+        lm35ReadingsSum += lm35ReadingsArray[i];
+    }
+    lm35ReadingsAverage = lm35ReadingsSum / NUMBER_OF_AVG_SAMPLES;
+    lm35TempC = analogReadingScaledWithTheLM35Formula(lm35ReadingsAverage);
+    
+    // Update potentiometer reading
+    potentiometerReading = potentiometer.read();
+    
+    // Update gas sensor state (MQ2 is LOW when gas detected)
+    gasDetectorState = !mq2;
+    
+    // Update temperature alarm state
+    overTempDetectorState = (lm35TempC > OVER_TEMP_LEVEL);
+    
+    // Update overall alarm state
+    alarmState = gasDetectorState || overTempDetectorState;
+    alarmLed = alarmState;
+}
+
+void displayAllReadings()
+{
+    char str[200];
+    int stringLength;
+    
+    // Display timestamp
+    sprintf(str, "===== SENSOR READINGS =====\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    // Display temperature reading
+    sprintf(str, "Temperature: %.2f °C\r\n", lm35TempC);
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    // Display potentiometer reading
+    sprintf(str, "Potentiometer: %.3f\r\n", potentiometerReading);
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    // Display gas sensor state
+    sprintf(str, "Gas Sensor: %s\r\n", gasDetectorState ? "GAS DETECTED" : "Normal");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    // Display alarm status
+    sprintf(str, "\r\nALARM STATUS: ");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    if (alarmState) {
+        if (gasDetectorState && overTempDetectorState) {
+            sprintf(str, "CRITICAL - Multiple Alarms!\r\n");
+        } else if (gasDetectorState) {
+            sprintf(str, "WARNING - Gas Detected!\r\n");
+        } else if (overTempDetectorState) {
+            sprintf(str, "WARNING - Temperature Too High!\r\n");
+        }
+    } else {
+        sprintf(str, "All systems normal\r\n");
+    }
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    sprintf(str, "\r\n=============================\r\n\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+}
+
+float analogReadingScaledWithTheLM35Formula(float analogReading)
+{
+    return (analogReading * 3.3 / 0.01);
+}
