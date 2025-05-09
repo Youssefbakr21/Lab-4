@@ -1,0 +1,83 @@
+//=====[Libraries]=============================================================
+
+#include "mbed.h"
+#include "arm_book_lib.h"
+
+//=====[Defines]===============================================================
+
+#define TIME_INCREMENT_MS                       500  // Update every 500ms
+
+//=====[Declaration and initialization of public global objects]===============
+
+UnbufferedSerial uartUsb(USBTX, USBRX, 115200);
+DigitalIn mq2(PE_12);  // Gas sensor connected to PE_12
+DigitalOut alarmLed(LED1);  // Using LED1 to visually indicate gas detection
+
+//=====[Declaration and initialization of public global variables]=============
+
+bool gasDetectorState = OFF;
+
+//=====[Declarations (prototypes) of public functions]=========================
+
+void initOutputs();
+void checkGasSensor();
+void displayGasStatus();
+
+//=====[Main function, the program entry point after power on or reset]========
+
+int main()
+{
+    char str[50];
+    int stringLength;
+    
+    // Initialize outputs
+    initOutputs();
+    
+    // Display startup message
+    sprintf(str, "Gas Sensor Monitor\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    sprintf(str, "Monitoring MQ-2 gas sensor on pin PE_12\r\n\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    while (true) {
+        checkGasSensor();
+        displayGasStatus();
+        delay(TIME_INCREMENT_MS);
+    }
+}
+
+//=====[Implementations of public functions]===================================
+
+void initOutputs()
+{
+    alarmLed = OFF;
+}
+
+void checkGasSensor()
+{
+    // Note: Based on the original code, the MQ2 sensor returns LOW (0) when gas is detected
+    if (!mq2) {
+        gasDetectorState = ON;
+        alarmLed = ON;  // Turn on LED when gas is detected
+    } else {
+        gasDetectorState = OFF;
+        alarmLed = OFF;  // Turn off LED when no gas is detected
+    }
+}
+
+void displayGasStatus()
+{
+    char str[50];
+    int stringLength;
+    
+    if (gasDetectorState) {
+        sprintf(str, "WARNING: Gas detected!\r\n");
+    } else {
+        sprintf(str, "Gas not detected\r\n");
+    }
+    
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+}
