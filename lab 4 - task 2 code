@@ -1,0 +1,46 @@
+//=====[Libraries]=============================================================
+
+#include "mbed.h"
+#include "arm_book_lib.h"
+
+//=====[Defines]===============================================================
+
+#define TIME_INCREMENT_MS                       500  // Update every 500ms
+
+//=====[Declaration and initialization of public global objects]===============
+
+UnbufferedSerial uartUsb(USBTX, USBRX, 115200);
+AnalogIn potentiometer(A0);
+
+//=====[Declaration and initialization of public global variables]=============
+
+float potentiometerReading = 0.0;
+
+//=====[Main function, the program entry point after power on or reset]========
+
+int main()
+{
+    char str[50];
+    int stringLength;
+    
+    // Display startup message
+    sprintf(str, "Potentiometer Monitor\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    sprintf(str, "Reading values from analog pin A0\r\n\r\n");
+    stringLength = strlen(str);
+    uartUsb.write(str, stringLength);
+    
+    while (true) {
+        // Read the potentiometer value (0.0 to 1.0)
+        potentiometerReading = potentiometer.read();
+        
+        // Display the potentiometer value
+        sprintf(str, "Potentiometer value: %.3f\r\n", potentiometerReading);
+        stringLength = strlen(str);
+        uartUsb.write(str, stringLength);
+        
+        // Wait before next reading
+        delay(TIME_INCREMENT_MS);
+    }
+}
